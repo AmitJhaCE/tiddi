@@ -1,0 +1,36 @@
+# FastAPI and server
+fastapi
+uvicorn[standard]
+
+# Database drivers
+asyncpg
+sqlalchemy
+alembic
+
+# Vector library
+pgvector
+
+# AI/ML libraries
+openai
+anthropic
+
+# Data validation and settings
+pydantic
+pydantic-settings
+
+# HTTP and file handling
+httpx
+python-multipart
+
+# Authentication and security
+python-jose[cryptography]
+passlib[bcrypt]
+
+# Environment and configuration
+python-dotenv
+
+# Caching
+aioredis
+
+# Utilities
+python-dateutil
