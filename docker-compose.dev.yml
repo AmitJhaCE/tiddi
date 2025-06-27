@@ -56,6 +56,30 @@ services:
       - dev-backend
     command: redis-server --appendonly yes
 
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-devpassword}@postgres:5432/${POSTGRES_DB:-work_management_dev}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - LOG_LEVEL=DEBUG
+      - ENVIRONMENT=testing
+    volumes:
+      - ./src:/app/src
+      - ./tests:/app/tests
+      - ./database:/app/database
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - dev-backend
+    profiles:
+      - testing
+    command: ["python", "-m", "pytest", "/app/tests", "-v", "--tb=short"]
+
   # Database management tool
   adminer:
     image: adminer

@@ -3,6 +3,9 @@
 .env.dev
 .env.prod
 
+# Scratch files
+synthesize.txt
+
 # Python
 __pycache__/
 *.py[cod]

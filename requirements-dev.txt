@@ -1,7 +1,4 @@
 # Testing
-pytest
-pytest-asyncio
-pytest-cov
 pytest-mock
 
 # Code formatting and linting
@@ -18,12 +15,11 @@ jupyter
 factory-boy
 faker
 
-# API testing
-httpx
-
-# Database testing
-pytest-postgresql
-
 # Documentation
 mkdocs
 mkdocs-material
+
+pytest>=7.4.0
+pytest-cov>=4.1.0
+httpx>=0.24.0
+requests>=2.31.0

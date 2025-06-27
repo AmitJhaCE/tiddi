@@ -15,7 +15,7 @@ COPY requirements.txt requirements-dev.txt ./
 
 # Development stage
 FROM base as development
-RUN pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt
+RUN pip install -r requirements.txt -r requirements-dev.txt
 
 # Copy source code (will be overridden by volume in dev)
 COPY . .
@@ -28,7 +28,7 @@ CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload
 
 # Production stage
 FROM base as production
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install -r requirements.txt
 
 # Copy only source code
 COPY src/ ./src/

@@ -1,14 +1,24 @@
 from pydantic_settings import BaseSettings
+from pydantic import ConfigDict
 from typing import Optional, List
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 class Settings(BaseSettings):
+    model_config = ConfigDict(
+        env_file=".env",
+        case_sensitive=False,
+        extra='ignore'  # This will ignore extra environment variables
+    )
+    
     # Database
     database_url: str = "postgresql://postgres:devpassword@localhost:5432/work_management_dev"
     
-    # API Keys
-    openai_api_key: str = ""
-    anthropic_api_key: str = ""
+    # Add these environment variables to your settings class
+    openai_api_key: str = os.getenv("OPENAI_API_KEY")
+    anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY")
     
     # Application
     environment: str = "development"
@@ -24,8 +34,17 @@ class Settings(BaseSettings):
     allowed_hosts: List[str] = ["*"]
     cors_origins: List[str] = ["*"]
     
-    class Config:
-        env_file = ".env.dev"
-        case_sensitive = False
+    # Settings for Claude:
+    claude_model: str = "claude-4-sonnet-20250514"
+    claude_max_tokens: int = 5000
+    claude_temperature: float = 0.1
+    
+    @property
+    def claude_config(self):
+        return {
+            "model": self.claude_model,
+            "max_tokens": self.claude_max_tokens,
+            "temperature": self.claude_temperature
+        }
 
 settings = Settings()
