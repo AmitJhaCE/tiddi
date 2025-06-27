@@ -15,7 +15,9 @@ class EntityRegistryService:
             "project": "project", 
             "concept": "concept",
             "organization": "concept",  # Map organization to concept
-            "technology": "technology",
+            "technology": "concept",   # Map technology to concept
+            "temporal": "concept",     # Map temporal references to concept
+            "action": "concept"       # Map action items to concept
         }
     
     async def process_and_store_entities(

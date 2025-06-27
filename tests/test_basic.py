@@ -1,5 +1,4 @@
 import pytest
-from fastapi.testclient import TestClient
 
 class TestBasicAPI:
     def test_health_check(self, client):

@@ -1,14 +1,14 @@
-# LLM-Assisted Work Management System - Updated Plan
+# LLM-Assisted Work Management System - Revised Plan
 
 ## Executive Summary
-This document specifies the design and implementation of an LLM-assisted work management system for individuals managing multiple projects simultaneously. The system provides a natural API interface with tool endpoints for LLM integration, powered by a robust knowledge management backend that captures, analyzes, and retrieves work activities through semantic search and intelligent planning.
+This document specifies the design and implementation of an LLM-assisted work management system for individuals managing multiple projects simultaneously. The system provides intelligent note capture with automatic segmentation and on-demand planning summaries through natural language interaction, powered by a robust knowledge management backend with semantic search capabilities.
 
 ### Core Value Proposition
-- **Natural Interface**: RESTful API with OpenAPI specification for LLM tool integration
-- **Intelligent Capture**: Automatic entity extraction and semantic indexing of work notes
-- **Contextual Search**: Hybrid search combining PostgreSQL full-text and pgvector semantic similarity
-- **Cross-Session Continuity**: Context preservation through comprehensive note storage
-- **Proactive Planning**: Weekly planning with historical intention surfacing
+- **Natural Note Capture**: LLM-driven segmentation of free-form work updates into structured notes
+- **On-Demand Planning**: Intent-driven summary generation triggered by natural language requests
+- **Intelligent Context**: Historical plan storage creates feedback loops for better future planning
+- **Semantic Intelligence**: Hybrid search combining PostgreSQL full-text and pgvector semantic similarity
+- **Cross-Session Continuity**: Context preservation through comprehensive note and plan storage
 
 ## System Architecture (Current)
 
@@ -16,7 +16,6 @@ This document specifies the design and implementation of an LLM-assisted work ma
 ```
 OpenWebUI + LiteLLM ↔ FastAPI Server (Knowledge System) ↔ PostgreSQL + pgvector
     ↑ (Chat Interface)     ↑ (OpenAPI Tools)                    ↑ (Hybrid Search)
-                         Redis (Caching)
 ```
 
 ### Technology Stack (Finalized)
@@ -25,13 +24,12 @@ OpenWebUI + LiteLLM ↔ FastAPI Server (Knowledge System) ↔ PostgreSQL + pgvec
 - **Database**: PostgreSQL 15+ with pgvector extension (pgvector/pgvector:pg15)
 - **Vector Storage**: pgvector extension for 1536-dimension embeddings
 - **Search**: PostgreSQL full-text search + vector similarity (hybrid)
-- **Caching**: Redis 7 for session and query caching
 - **Embeddings**: OpenAI text-embedding-3-small
 - **Entity Extraction**: Anthropic Claude for intelligent entity recognition
 
 #### LLM Integration
-- **Chat Interface**: OpenWebUI (already running on port 3000)
-- **Model Proxy**: LiteLLM (already running on port 4000)
+- **Chat Interface**: OpenWebUI (running on port 3000)
+- **Model Proxy**: LiteLLM (running on port 4000)
 - **Tool Integration**: FastAPI OpenAPI spec consumed by OpenWebUI
 
 #### Infrastructure
@@ -49,7 +47,8 @@ OpenWebUI + LiteLLM ↔ FastAPI Server (Knowledge System) ↔ PostgreSQL + pgvec
 #### FastAPI Server
 - **OpenAPI tool endpoints** for LLM integration
 - **Entity extraction** and relationship mapping
-- **Semantic search** and planning algorithms
+- **Intent-driven planning** and summary generation
+- **Semantic search** and data retrieval
 - **Health monitoring** and error handling
 
 #### OpenWebUI + LiteLLM
@@ -74,315 +73,392 @@ OpenWebUI + LiteLLM ↔ FastAPI Server (Knowledge System) ↔ PostgreSQL + pgvec
 - ✅ **Advanced Entity Extraction**: Claude-powered extraction with high confidence scores (0.85-0.95)
 - ✅ **Hybrid Search Engine**: PostgreSQL full-text + pgvector semantic similarity with relevance ranking
 - ✅ **Robust API Layer**: FastAPI with proper Pydantic models and OpenAPI documentation
-- ✅ **Data Model Alignment**: Clean mapping between database schema and API responses
-- ✅ **OpenAI Integration**: 1536-dimension embeddings with pgvector storage
-- ✅ **Entity Registry**: Deduplication and relationship tracking
+- ✅ **Entity Registry**: Deduplication and relationship tracking with fuzzy matching
 - ✅ **Type-Safe Models**: Pydantic validation throughout
 
-**Technical Achievements:**
-- OpenAI embeddings generation and storage
-- Entity extraction using Anthropic Claude
-- Hybrid search with relevance scoring
-- Database connection pooling with asyncpg
-- Hot-reload development environment
-- Comprehensive error handling and logging
+## Phase 3: Planning Intelligence & Tool Integration (3-4 weeks)
 
-**Test Results (Verified Working):**
-```bash
-# Health check - ✅ PASS
-curl http://localhost:8000/health
-{"success":true,"message":"Health check completed in 35ms","services":{"postgresql":"healthy","pgvector":"healthy"},"version":"1.0.0"}
+### Week 1: Enhanced Note Processing & Bulk Storage
 
-# Note storage - ✅ PASS (4.2s processing, 4 entities extracted)
-curl -X POST "http://localhost:8000/tools/notes" -H "Content-Type: application/json" -d '{"text": "Had a meeting with John about ProjectX. We discussed the new React components and decided to use TypeScript."}'
+#### Core Implementation Tasks
 
-# Search - ✅ PASS (1.16s query time, 3 results with relevance ranking)
-curl "http://localhost:8000/tools/notes/search?query=John%20ProjectX&limit=5"
+**1.1 Bulk Note Storage Endpoint**
+- **Endpoint**: `POST /tools/notes/bulk`
+- **Input Schema**: 
+  ```python
+  class BulkStoreNotesRequest(BaseModel):
+      notes: List[StoreNoteRequest]
+      session_id: Optional[str] = None
+  
+  class BulkStoreNotesResponse(BaseResponse):
+      stored_notes: List[Dict[str, Any]]  # note_id, entities, processing_time
+      total_processed: int
+      total_processing_time_ms: int
+      failed_notes: List[Dict[str, Any]]  # errors and failed entries
+  ```
+- **Processing Strategy**: Parallel processing with progress tracking and error isolation
+- **LLM Integration**: LLM segments user's free-form text into structured note array, then calls this endpoint
 
-# Entity filtering - ✅ PASS (fixed parameter binding issue)
-curl "http://localhost:8000/tools/notes/search?query=React&entity_filter=John"
-```
+**1.2 Enhanced Entity Extraction for Planning Context**
+- **Temporal Entity Detection**: 
+  - Extract time references: "next week", "by Friday", "end of month", "Q2"
+  - Parse specific dates and deadlines from text
+  - Populate `planned_intentions` table with extracted deadlines
+- **Action Item Recognition**:
+  - Detect action-oriented language: "need to", "schedule", "follow up with"
+  - Extract ownership: "waiting on Darshan", "assigned to Platform team"
+  - Identify dependencies and blockers
+- **Status Tracking**:
+  - Recognize completion indicators: "completed", "done", "finished"
+  - Track progress markers: "in progress", "pending", "blocked"
 
-### 🧪 Phase 2.5: Testing & Validation (CURRENT - 1-2 weeks)
-**Current Priority:** Comprehensive testing framework for production readiness.
+**1.3 Realistic Volume Testing**
+- **Test Data Preparation**: Convert sample notes using LLM segmentation
+- **Performance Benchmarking**: 
+  - Single note: ~4.2s baseline
+  - Bulk processing: Target <30s for 10-20 notes
+  - Volume simulation: Test with 100-500 note batches
+- **Error Handling**: Graceful degradation when entity extraction or embedding fails
 
-**Tasks in Progress:**
-- [ ] Docker-based pytest setup
-- [ ] Integration tests for complete workflows
-- [ ] Service layer unit tests
-- [ ] Performance benchmarks
-- [ ] Error handling validation
-- [ ] Test coverage reporting
+**1.4 Session Management Enhancement**
+- **Conversation Tracking**: Link related notes within planning conversations
+- **Context Preservation**: Maintain session state across multiple note submissions
+- **Planning Session Metadata**: Track when notes are part of planning refinement process
 
-### 🚀 Phase 3: Advanced Search & Analytics (3-4 weeks)
-**Deliverables:**
-- Enhanced semantic search with faceted filtering
-- Entity relationship analysis and visualization
-- Topic clustering and trend analysis
-- Search analytics and user behavior tracking
-- Performance optimization and Redis caching
+### Week 2: Intent-Driven Planning System
 
-**Tasks:**
-1. Implement advanced search filters (date ranges, entity types, confidence thresholds)
-2. Build entity relationship mapping and graph analysis
-3. Create topic clustering using embeddings
-4. Add search result ranking improvements
-5. Implement Redis caching layer for frequent queries
-6. Add search analytics and metrics collection
+#### Core Implementation Tasks
 
-### 🚀 Phase 4: Planning & Workflow Intelligence (3-4 weeks)
-**Deliverables:**
-- Weekly summary generation with LLM insights
-- Action item extraction and status tracking
-- Temporal intention detection and planning
-- Project momentum analysis
-- Deadline and dependency management
+**2.1 Intelligent Planning Endpoint**
+- **Endpoint**: `POST /tools/planning/generate-summary`
+- **Input Schema**:
+  ```python
+  class GenerateSummaryRequest(BaseModel):
+      intent: str  # "manager report", "team update", "status for stakeholder X"
+      timeframe: Optional[str] = "this week"  # "last month", "Q2", "since March"
+      entities: Optional[List[str]] = None  # Filter by people/projects
+      additional_context: Optional[str] = None  # User refinements
+      session_id: Optional[str] = None  # For plan refinement tracking
+  
+  class GenerateSummaryResponse(BaseResponse):
+      summary: str  # Generated plan/summary content
+      data_sources: List[str]  # Note IDs used in generation
+      suggestions: List[str]  # Follow-up actions or refinements
+      plan_id: Optional[str] = None  # If user confirms, this becomes note_id
+      session_id: str  # For tracking refinements
+  ```
 
-**Tasks:**
-1. Implement weekly summary generation using LLM
-2. Build action item extraction from notes
-3. Create temporal intention detection (dates, deadlines)
-4. Develop weekly planning algorithm with historical context
-5. Add project tracking and momentum analysis
-6. Integrate planning session management
+**2.2 Context Retrieval Engine**
+- **Intent Analysis**: 
+  - Parse natural language intents using LLM
+  - Map to appropriate summary templates and focus areas
+  - Determine optimal timeframe and entity filters
+- **Smart Data Retrieval**:
+  - Use hybrid search to find relevant notes based on intent
+  - Apply temporal filtering based on timeframe
+  - Entity-based filtering for stakeholder-specific updates
+  - Context window management (prioritize recent + relevant historical)
+- **Prompt Construction**:
+  - Dynamic prompt building based on intent type
+  - Include relevant historical plans for consistency
+  - Format retrieved notes for optimal LLM processing
 
-### 🎯 Phase 5: Tool Integration (3-5 days) - REVISED
-**Deliverables:**
-- OpenWebUI tool registration and testing
-- Enhanced OpenAPI specifications for LLM clarity
-- End-to-end workflow validation
-- User documentation and examples
+**2.3 Plan Refinement Workflow**
+- **Interactive Refinement Process**:
+  1. User requests initial plan: "Generate manager update for this month"
+  2. System generates summary, returns with `session_id`
+  3. User provides feedback: "Also mention the security audit delays"
+  4. LLM calls planning endpoint again with `additional_context` and same `session_id`
+  5. System retrieves additional relevant notes about security audit
+  6. System generates refined plan incorporating new information
+  7. Process repeats until user confirms plan
 
-**Tasks:**
-1. Register API server as tool in OpenWebUI (30 minutes)
-2. Enhance OpenAPI descriptions for better LLM understanding (2-3 hours)
-3. Test tool discovery and execution with multiple models (1-2 days)
-4. Create usage examples and documentation (1 day)
-5. Debug and polish tool integration (1 day)
+**2.4 Plan Confirmation & Storage**
+- **Confirmation Detection**: 
+  - LLM recognizes confirmation signals: "That looks good", "Save this plan", "Perfect"
+  - Explicit confirmation endpoint: `POST /tools/planning/confirm-plan`
+- **Plan Storage as Notes**:
+  ```python
+  # When plan is confirmed, store as special note
+  confirmed_plan_note = {
+      "text": refined_summary,
+      "tags": ["generated-plan", intent_type, timeframe],
+      "metadata": {
+          "type": "confirmed_plan",
+          "intent": original_intent,
+          "source_notes": list_of_source_note_ids,
+          "refinement_session": session_id,
+          "generated_at": timestamp,
+          "confirmed_at": timestamp
+      },
+      "session_id": planning_session_id
+  }
+  ```
+- **Historical Context Building**: Stored plans become searchable context for future planning
 
-**Note:** OpenWebUI and LiteLLM already running - this phase is primarily configuration and testing.
+**2.5 Planning Session Management**
+- **Session Tracking**: Use `planning_sessions` table to track refinement conversations
+- **Context Continuity**: Link all notes and refinements within a planning session
+- **Plan Evolution**: Track how plans change through user feedback
+- **Learning Integration**: Use historical plan accuracy to improve future suggestions
 
-### 🚀 Phase 6: Production Deployment & Polish (2-3 weeks)
-**Deliverables:**
-- Production Docker Compose with security hardening
-- Monitoring, logging, and alerting infrastructure
-- User authentication and multi-tenancy support
-- Backup and disaster recovery procedures
-- Performance monitoring and optimization
+### Week 3: OpenWebUI Integration & Natural Language Workflows
 
-**Tasks:**
-1. Create production deployment configuration
-2. Implement user authentication and session management
-3. Add monitoring with Prometheus/Grafana
-4. Set up automated backups and recovery
-5. Load testing and performance optimization
-6. Security audit and hardening
+#### Core Implementation Tasks
+
+**3.1 Tool Registration & Discovery**
+- **OpenWebUI Tool Registration**:
+  - Register bulk notes endpoint with clear descriptions
+  - Register planning endpoint with intent examples
+  - Register plan confirmation endpoint
+- **Enhanced OpenAPI Specifications**:
+  ```python
+  # Example enhanced endpoint documentation
+  @app.post("/tools/notes/bulk", 
+           summary="Store multiple work notes at once",
+           description="Accepts an array of notes segmented by LLM from user's free-form updates")
+  
+  @app.post("/tools/planning/generate-summary",
+           summary="Generate work summary based on natural language intent", 
+           description="Creates summaries for different audiences: managers, teams, stakeholders")
+  ```
+
+**3.2 Natural Language Workflow Testing**
+- **Note Capture Workflow**:
+  ```
+  User: [Pastes large block of work updates]
+  LLM: Segments into individual notes → Calls bulk endpoint
+  System: Processes entities, embeddings → Stores all notes
+  LLM: "I've captured 8 work updates covering Fabric MVP, Pen Testing, and Data Quality work"
+  ```
+
+- **Planning Workflow**:
+  ```
+  User: "Create a status update for my manager focusing on this month's progress"
+  LLM: Calls planning endpoint with intent analysis
+  System: Retrieves relevant notes → Generates manager-focused summary
+  LLM: Presents summary with "Would you like me to refine this further?"
+  
+  User: "Add more detail about the Purview integration blockers"
+  LLM: Calls planning endpoint with additional context
+  System: Finds Purview-related notes → Updates summary
+  LLM: Presents refined version
+  
+  User: "Perfect, save this"
+  LLM: Calls confirmation endpoint
+  System: Stores confirmed plan as note for future reference
+  ```
+
+**3.3 Multi-Model Compatibility Testing**
+- **Test Across LLM Models**: Validate tool calling works with different models via LiteLLM
+- **Error Handling**: Graceful degradation when tool calls fail
+- **Fallback Strategies**: Alternative workflows when OpenWebUI integration has issues
+
+**3.4 Real-World Usage Validation**
+- **Bulk Data Import**: Use your existing notes converted via LLM segmentation
+- **Planning Scenario Testing**: 
+  - Manager reports with different time ranges
+  - Team updates filtered by specific projects
+  - Stakeholder communications with entity filtering
+- **Refinement Flow Testing**: Multi-turn planning conversations with context preservation
+
+### Week 4: Production Readiness & Advanced Features
+
+#### Core Implementation Tasks
+
+**4.1 Plan Quality & Intelligence Enhancement**
+- **Historical Plan Analysis**:
+  - Compare planned vs. actual work from stored plans
+  - Identify patterns in planning accuracy
+  - Surface recurring themes and blockers
+- **Proactive Suggestions**:
+  - "Based on past plans, you often underestimate Darshan's response time"
+  - "Your Fabric MVP work typically takes 2x longer than planned"
+  - "Consider following up on items marked 'waiting on Platform team'"
+
+**4.2 Plan Interconnection & Context**
+- **Cross-Plan References**: 
+  - Link related plans across time periods
+  - Identify recurring action items and their completion patterns
+  - Track long-term project momentum
+- **Entity-Centric Planning**:
+  - Generate person-specific updates: "All items involving Darshan"
+  - Project-focused summaries: "Fabric MVP progress across all notes"
+  - Stakeholder-aware filtering: "Updates relevant to Barbara and Martin"
+
+**4.3 Advanced Planning Features**
+- **Deadline Awareness**: 
+  - Surface upcoming deadlines from historical notes
+  - Identify overdue items from past plans
+  - Predict completion dates based on historical patterns
+- **Dependency Tracking**:
+  - Map dependencies between action items
+  - Identify bottlenecks and critical path items
+  - Alert on blocked work streams
+
+**4.4 Performance Optimization & Error Handling**
+- **Bulk Processing Optimization**: 
+  - Parallel entity extraction for large note batches
+  - Efficient embedding generation with batching
+  - Database transaction optimization
+- **Planning Performance**: 
+  - Context retrieval optimization with smart indexing
+  - LLM prompt optimization for faster generation
+  - Caching strategies for frequently accessed plans
+- **Comprehensive Error Handling**:
+  - Graceful degradation when external services fail
+  - User-friendly error messages for planning failures
+  - Retry mechanisms for transient failures
+
+**4.5 Integration Polish & Documentation**
+- **OpenWebUI Optimization**: 
+  - Tool descriptions optimized for LLM understanding
+  - Parameter validation and helpful error messages
+  - Usage examples embedded in OpenAPI specs
+- **User Experience Refinement**:
+  - Consistent response formatting across all endpoints
+  - Progress indicators for long-running operations
+  - Clear confirmation flows for plan storage
+- **Documentation & Examples**:
+  - Complete workflow documentation with real examples
+  - Troubleshooting guides for common issues
+  - Best practices for note capture and planning
 
 ## Database Schema (Implemented)
 
-**Complete PostgreSQL + pgvector Schema:**
-```sql
--- Extensions
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "pg_trgm";
-CREATE EXTENSION IF NOT EXISTS "vector";
+### Core Tables
+- **users**: User management with activity tracking
+- **notes**: Primary note storage with vector embeddings and full-text search
+- **entities**: Normalized entity registry with deduplication and aliases
+- **entity_mentions**: Many-to-many relationships between notes and entities
+- **planned_intentions**: Temporal intention tracking for deadline management
+- **planning_sessions**: Weekly planning session storage
 
--- Users table
-CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    username TEXT UNIQUE NOT NULL,
-    email TEXT UNIQUE,
-    full_name TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    last_active TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
+### Key Features
+- **pgvector support**: 1536-dimension embeddings with cosine similarity search
+- **Full-text search**: PostgreSQL tsvector with GIN indexes
+- **Entity deduplication**: Fuzzy matching with pg_trgm extension
+- **Temporal tracking**: Intention detection with flexible date handling
+- **Performance optimization**: 12+ specialized indexes for search and relationships
 
--- Notes with vector embeddings and full-text search
-CREATE TABLE notes (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    session_id TEXT,
-    text TEXT NOT NULL CHECK (length(text) > 0),
-    timestamp TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    embedding vector(1536) NULL,
-    text_search_vector tsvector GENERATED ALWAYS AS (to_tsvector('english', text)) STORED,
-    extracted_entities JSONB DEFAULT '[]',
-    tags JSONB DEFAULT '[]',
-    metadata JSONB DEFAULT '{}',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
--- Entity registry for deduplication
-CREATE TABLE entities (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    canonical_name TEXT NOT NULL,
-    entity_type TEXT NOT NULL CHECK (entity_type IN ('person', 'project', 'technology', 'concept')),
-    aliases JSONB DEFAULT '[]',
-    mention_count INTEGER DEFAULT 0,
-    first_seen TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    last_seen TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    metadata JSONB DEFAULT '{}',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    UNIQUE(canonical_name, entity_type)
-);
-
--- Entity mentions linking
-CREATE TABLE entity_mentions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    note_id UUID NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
-    entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
-    mentioned_text TEXT NOT NULL,
-    confidence DECIMAL(3,2) DEFAULT 0.5,
-    position_start INTEGER,
-    position_end INTEGER,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
--- Temporal intentions for planning
-CREATE TABLE planned_intentions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    source_note_id UUID REFERENCES notes(id) ON DELETE CASCADE,
-    intention_text TEXT NOT NULL,
-    mentioned_date DATE NOT NULL,
-    target_date DATE,
-    target_date_fuzzy TEXT,
-    status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'completed', 'cancelled')),
-    priority TEXT DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high')),
-    related_entities JSONB DEFAULT '[]',
-    confidence DECIMAL(3,2) DEFAULT 0.5,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
--- Planning sessions
-CREATE TABLE planning_sessions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    session_date DATE NOT NULL,
-    week_start DATE NOT NULL,
-    generated_plan JSONB,
-    intentions_surfaced JSONB DEFAULT '[]',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
--- Performance indexes
-CREATE INDEX idx_notes_user_timestamp ON notes(user_id, timestamp DESC);
-CREATE INDEX idx_notes_text_search ON notes USING gin(text_search_vector);
-CREATE INDEX idx_notes_embedding ON notes USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
-CREATE INDEX idx_entity_mentions_note_id ON entity_mentions(note_id);
-CREATE INDEX idx_entity_mentions_entity_id ON entity_mentions(entity_id);
-CREATE INDEX idx_entities_type_name ON entities(entity_type, canonical_name);
-CREATE INDEX idx_entities_mention_count ON entities(mention_count DESC);
-CREATE INDEX idx_planned_intentions_user_date ON planned_intentions(user_id, target_date);
-CREATE INDEX idx_planned_intentions_status ON planned_intentions(status) WHERE status = 'pending';
-CREATE INDEX idx_planning_sessions_user_week ON planning_sessions(user_id, week_start);
-```
+### Extensions Used
+- **uuid-ossp**: UUID generation
+- **pg_trgm**: Fuzzy string matching and similarity
+- **vector (pgvector)**: Vector operations and similarity search
 
 ## API Specification (Implemented)
 
-### Current Tool Endpoints
+### Current Endpoints
 ```python
-# Health and system endpoints
-@app.get("/health")
-async def health_check() -> HealthResponse
+# System endpoints
+GET /health -> HealthResponse
+GET / -> API information
 
-@app.get("/")
-async def root()
+# Note management tools
+POST /tools/notes -> StoreNoteResponse
+POST /tools/notes/bulk -> BulkStoreNotesResponse  # To be implemented
+GET /tools/notes/search -> SearchNotesResponse
 
-# Tool endpoints for LLM integration
-@app.post("/tools/notes", response_model=StoreNoteResponse)
-async def store_note_tool(request: StoreNoteRequest) -> StoreNoteResponse
-
-@app.get("/tools/notes/search", response_model=SearchNotesResponse)
-async def search_notes_tool(
-    query: str,
-    limit: int = 10,
-    days_back: Optional[int] = 30,
-    entity_filter: Optional[str] = None
-) -> SearchNotesResponse
+# Planning tools  
+POST /tools/planning/generate-summary -> PlanningResponse  # To be implemented
 ```
 
 ### Pydantic Models (Implemented)
+
+#### Base Models
 ```python
+class BaseResponse(BaseModel):
+    success: bool = True
+    message: str
+    timestamp: datetime
+
+class HealthResponse(BaseResponse):
+    services: Dict[str, str]
+    version: str = "1.0.0"
+```
+
+#### Note Models  
+```python
+class EntityMention(BaseModel):
+    name: str
+    type: str  # person, project, concept, technology
+    confidence: float
+
 class StoreNoteRequest(BaseModel):
-    text: str = Field(..., min_length=1, max_length=10000)
-    tags: Optional[List[str]] = Field(default=[])
-    session_id: Optional[str] = Field(None)
-
-class StoreNoteResponse(BaseResponse):
-    note_id: str
-    entities: List[Dict[str, Any]]
-    processing_time_ms: int = 0
-    embedding_dimensions: int = 0
-
-class SearchNotesResponse(BaseResponse):
-    results: List[NoteSearchResult]
-    metadata: SearchMetadata
+    text: str = Field(min_length=1, max_length=10000)
+    tags: Optional[List[str]] = []
+    session_id: Optional[str] = None
 
 class NoteSearchResult(BaseModel):
     id: str
     text: str
     timestamp: datetime
     extracted_entities: List[EntityMention]
-    linked_entities: List[EntityMention]
+    linked_entities: List[EntityMention] 
     relevance_score: float
     similarity_score: Optional[float]
     text_rank: Optional[float]
 ```
 
-## Current File Structure
+#### Search Models
+```python
+class SearchMetadata(BaseModel):
+    total_found: int
+    query_time_ms: int
+    query: str
+    filters_applied: Dict[str, Any]
+    search_type: str = "hybrid"
 
-```
-work-management-system/
-├── docker-compose.dev.yml     # Development environment (updated with test service)
-├── .env.dev                   # Development environment variables
-├── Dockerfile                 # FastAPI application container
-├── requirements.txt           # Python dependencies
-├── requirements-dev.txt       # Development dependencies (includes pytest)
-├── database/
-│   ├── init.sql              # Complete database schema with pgvector
-│   ├── migrations/           # Future schema changes
-│   └── seeds/                # Test data
-├── src/
-│   ├── __init__.py
-│   ├── main.py              # FastAPI application with working tool endpoints
-│   ├── config.py            # Configuration management
-│   ├── database/
-│   │   ├── __init__.py
-│   │   └── dbconfig.py      # Database manager with pgvector support
-│   ├── models/
-│   │   ├── __init__.py
-│   │   ├── base.py          # Base models and utilities
-│   │   ├── notes.py         # Note-related models
-│   │   └── search.py        # Search-related models
-│   ├── services/
-│   │   ├── __init__.py
-│   │   ├── openai_service.py        # OpenAI embeddings
-│   │   ├── anthropic_handler.py     # Custom Anthropic handler
-│   │   ├── entity_service.py        # Entity extraction
-│   │   ├── note_service.py          # Note orchestration
-│   │   └── database_service.py      # Database operations
-│   └── middleware/
-│       └── __init__.py
-├── tests/
-│   ├── conftest.py          # Test configuration (to be implemented)
-│   ├── test_integration.py  # End-to-end tests (to be implemented)
-│   ├── test_services.py     # Service layer tests (to be implemented)
-│   ├── unit/               # Unit tests
-│   └── integration/        # Integration tests
-├── scripts/
-│   ├── dev-setup.sh        # Complete environment setup
-│   ├── dev-test.sh         # Comprehensive testing
-│   └── dev-logs.sh         # Log management
-└── docs/
-    └── plan.md             # This document
+class SearchNotesResponse(BaseResponse):
+    results: List[NoteSearchResult]
+    metadata: SearchMetadata
 ```
 
-## Development Environment (Working)
+## Services Architecture (Implemented)
 
-### Docker Compose Configuration
+### Core Services
+
+#### DatabaseService
+- **Purpose**: Core data storage and retrieval operations
+- **Key Methods**: 
+  - `store_note_with_embedding()`: Store notes with vector embeddings
+  - `hybrid_search()`: Combined semantic and full-text search
+  - `get_note_by_id()`: Single note retrieval with entity links
+- **Features**: Connection pooling, type conversion, error handling
+
+#### EntityRegistryService  
+- **Purpose**: Advanced entity management with deduplication
+- **Key Methods**:
+  - `process_and_store_entities()`: Full entity processing pipeline
+  - `_find_fuzzy_matches()`: Similarity-based entity matching
+  - `merge_entities()`: Duplicate entity consolidation
+- **Features**: Fuzzy matching, alias management, mention tracking
+
+#### EntityService
+- **Purpose**: LLM-powered entity extraction
+- **Integration**: Anthropic Claude for intelligent recognition
+- **Output**: Structured entities with confidence scores
+- **Categories**: person, project, concept, organization/technology
+
+#### OpenAIService
+- **Purpose**: Vector embedding generation
+- **Model**: text-embedding-3-small (1536 dimensions)
+- **Integration**: Async OpenAI client with error handling
+
+#### NoteService  
+- **Purpose**: Orchestration layer for note processing
+- **Pipeline**: Content → Parallel(Embeddings + Entities) → Storage → Registry
+- **Performance**: ~4.2s processing time for full pipeline
+- **Features**: Parallel processing, comprehensive error handling
+
+### Service Integration Flow
+```
+User Input → NoteService → [OpenAIService + EntityService] → DatabaseService → EntityRegistryService
+```
+
+## Development Environment (Updated)
+
+### Docker Compose Configuration (No Redis)
 ```yaml
 services:
   postgres:
@@ -422,13 +498,6 @@ services:
     networks:
       - dev-backend
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    networks:
-      - dev-backend
-
   adminer:
     image: adminer
     ports:
@@ -436,7 +505,7 @@ services:
     networks:
       - dev-backend
 
-  # Test service (to be added)
+  # Test service
   test:
     build:
       context: .
@@ -458,20 +527,28 @@ services:
     profiles:
       - testing
     command: ["python", "-m", "pytest", "/app/tests", "-v"]
+
+volumes:
+  postgres_dev_data:
+
+networks:
+  dev-backend:
+    driver: bridge
 ```
 
-### Development Workflow (Current)
+### Development Workflow
 ```bash
 # Start development environment
 ./scripts/dev-setup.sh
 
-# Run tests with Docker
+# Run tests
 docker-compose -f docker-compose.dev.yml --profile testing run --rm test
 
-# Test API endpoints (all working)
+# Test API endpoints
 curl http://localhost:8000/health
-curl -X POST "http://localhost:8000/tools/notes" -H "Content-Type: application/json" -d '{"text": "Test note"}'
-curl "http://localhost:8000/tools/notes/search?query=test&limit=5"
+curl -X POST "http://localhost:8000/tools/notes" -H "Content-Type: application/json" \
+  -d '{"text": "Meeting with John about ProjectX React components"}'
+curl "http://localhost:8000/tools/notes/search?query=John%20ProjectX&limit=5"
 
 # Access services
 # - API: http://localhost:8000
@@ -481,12 +558,69 @@ curl "http://localhost:8000/tools/notes/search?query=test&limit=5"
 # - LiteLLM: http://localhost:4000 (separate stack)
 ```
 
+## File Structure (Current)
+```
+work-management-system/
+├── docker-compose.dev.yml     # Updated development environment (no Redis)
+├── .env.dev                   # Development environment variables
+├── Dockerfile                 # FastAPI application container
+├── requirements.txt           # Python dependencies
+├── requirements-dev.txt       # Development dependencies
+├── database/
+│   ├── init.sql              # Complete schema with pgvector
+│   └── migrations/           # Future schema changes
+├── src/
+│   ├── main.py              # FastAPI app with tool endpoints
+│   ├── config.py            # Configuration management
+│   ├── database/
+│   │   └── dbconfig.py      # Database manager with pgvector
+│   ├── models/
+│   │   ├── base.py          # Base response models
+│   │   ├── notes.py         # Note and entity models
+│   │   └── search.py        # Search response models
+│   └── services/
+│       ├── openai_service.py         # Embedding generation
+│       ├── anthropic_handler.py      # Claude integration
+│       ├── entity_service.py         # Entity extraction
+│       ├── entity_registry_service.py # Entity deduplication
+│       ├── note_service.py           # Note processing orchestration
+│       └── database_service.py       # Data operations
+├── tests/
+│   ├── conftest.py          # Test configuration
+│   ├── test_basic.py        # Basic functionality tests
+│   └── test_services.py     # Service layer tests
+├── scripts/
+│   ├── dev-setup.sh        # Environment setup
+│   ├── dev-test.sh         # Testing utilities
+│   └── dev-logs.sh         # Log management
+└── docs/
+    └── plan.md             # This document
+```
+
 ## Progress Summary
 
-### 📊 Overall Progress: ~40% Complete
+### 📊 Overall Progress: ~50% Complete
 
-**✅ Completed (Phases 1-2):**
-- Complete development infrastructure
-- Production-ready note storage and search system
-- Advanced entity extraction with Claude
-- Hybrid search with relevance
+**✅ Completed Infrastructure:**
+- Complete PostgreSQL + pgvector database with optimized schema
+- FastAPI application with health monitoring and error handling
+- Advanced entity registry with fuzzy matching and deduplication
+- Hybrid search combining semantic similarity and full-text search
+- Production-ready note storage with parallel processing pipeline
+
+**🚀 Next Phase Focus:**
+- Bulk note processing for LLM-segmented input
+- Intent-driven planning system with natural language processing  
+- Generated plan storage for historical context and feedback loops
+- OpenWebUI tool integration for seamless chat-based interaction
+
+**🎯 Target User Workflow:**
+1. User pastes free-form work updates into chat
+2. LLM segments notes and calls bulk storage tool
+3. System processes entities and stores with embeddings
+4. User requests planning: "Generate manager update for this month"  
+5. System retrieves relevant context and generates targeted summary
+6. Generated plan stored as note for future context
+7. Continuous improvement through historical plan analysis
+
+The system is positioned to become an intelligent work management companion that learns from historical patterns while providing actionable insights through natural language interaction.

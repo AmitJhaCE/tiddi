@@ -8,14 +8,12 @@ from fastapi.openapi.utils import get_openapi
 
 from contextlib import asynccontextmanager
 from .services.note_service import note_service
-from .config import settings  
+from .config import settings
 from .database import db_manager
-from .models.base import (  
-    HealthResponse,
-    StoreNoteRequest,
-    StoreNoteResponse
-)
+from .models.base import HealthResponse, StoreNoteRequest, StoreNoteResponse
 from .models.search import SearchNotesResponse, SearchMetadata
+from .models.notes import BulkStoreNotesRequest, BulkStoreNotesResponse, BulkNoteResult
+
 
 # Configure logging
 logging.basicConfig(
@@ -27,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan manager"""
+    """Application lifespan manager with proper async client cleanup"""
     # Startup
     logger.info("Starting Work Management API...")
     try:
@@ -39,11 +37,23 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Shutdown
+    # Shutdown - Clean up async clients
     logger.info("Shutting down Work Management API...")
-    await db_manager.close()
-    logger.info("Application shutdown completed")
-
+    try:
+        # Import services here to avoid circular imports
+        from .services.openai_service import openai_service
+        from .services.entity_service import entity_service
+        
+        # Close async clients
+        await openai_service.close()
+        await entity_service.close()
+        
+        # Close database connections
+        await db_manager.close()
+        
+        logger.info("Application shutdown completed successfully")
+    except Exception as e:
+        logger.error(f"Shutdown error: {e}")
 
 # Create FastAPI application
 app = FastAPI(
@@ -140,6 +150,63 @@ async def store_note_tool(
         raise HTTPException(status_code=500, detail=f"Failed to store note: {str(e)}")
 
 
+# Bulk store_note_tool
+@app.post("/tools/notes/bulk", response_model=BulkStoreNotesResponse, tags=["Tools"])
+async def store_notes_bulk_tool(
+    request: BulkStoreNotesRequest, user_id: str = Depends(get_current_user_id)
+):
+    """Store multiple work notes at once with parallel processing"""
+    try:
+        # Convert request to format expected by service
+        notes_data = [
+            {"text": note.text, "tags": note.tags, "session_id": note.session_id}
+            for note in request.notes
+        ]
+
+        result = await note_service.store_notes_bulk(
+            notes_data=notes_data,
+            user_id=user_id,
+            session_id=request.session_id,
+        )
+
+        # Convert service response to API response format
+        stored_notes = [
+            BulkNoteResult(
+                note_id=note["note_id"],
+                entities=note["entities"],
+                processing_time_ms=note["processing_time_ms"],
+                success=note["success"],
+                error=note.get("error"),
+            )
+            for note in result["stored_notes"]
+        ]
+
+        failed_notes = [
+            BulkNoteResult(
+                note_id=note["note_id"],
+                entities=note["entities"],
+                processing_time_ms=note["processing_time_ms"],
+                success=note["success"],
+                error=note.get("error"),
+            )
+            for note in result["failed_notes"]
+        ]
+
+        return BulkStoreNotesResponse(
+            stored_notes=stored_notes,
+            failed_notes=failed_notes,
+            total_processed=result["total_processed"],
+            success_count=result["success_count"],
+            failure_count=result["failure_count"],
+            total_processing_time_ms=result["total_processing_time_ms"],
+            message=f"Processed {result['total_processed']} notes in {result['total_processing_time_ms']}ms",
+        )
+
+    except Exception as e:
+        logger.error(f"Error in bulk note storage: {e}")
+        raise HTTPException(status_code=500, detail=f"Bulk storage failed: {str(e)}")
+
+
 @app.get("/tools/notes/search", response_model=SearchNotesResponse, tags=["Tools"])
 async def search_notes_tool(
     query: str = Query(..., description="Search query"),
@@ -157,7 +224,7 @@ async def search_notes_tool(
             days_back=days_back,
             entity_filter=entity_filter,
         )
-        
+
         # CREATE proper metadata
         metadata = SearchMetadata(
             total_found=result["total_found"],
@@ -166,10 +233,10 @@ async def search_notes_tool(
             filters_applied={
                 "days_back": days_back,
                 "entity_filter": entity_filter,
-                "limit": limit
-            }
+                "limit": limit,
+            },
         )
-        
+
         return SearchNotesResponse(
             results=result["results"],
             metadata=metadata,
@@ -178,6 +245,7 @@ async def search_notes_tool(
     except Exception as e:
         logger.error(f"Error searching notes: {e}")
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+
 
 # Root endpoint
 @app.get("/", tags=["System"])

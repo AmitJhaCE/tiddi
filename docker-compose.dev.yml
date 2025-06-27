@@ -80,6 +80,25 @@ services:
       - testing
     command: ["python", "-m", "pytest", "/app/tests", "-v", "--tb=short"]
 
+  db-reset:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-devpassword}@postgres:5432/${POSTGRES_DB:-work_management_dev}
+    volumes:
+      - ./scripts:/app/scripts
+      - ./src:/app/src
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - dev-backend
+    profiles:
+      - db-management
+    command: ["python", "/app/scripts/reset_test_db.py"]
+
   # Database management tool
   adminer:
     image: adminer

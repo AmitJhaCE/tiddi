@@ -221,11 +221,41 @@ class AnthropicAsyncHandler:
         self._config = config
         self._print_response = print_response
         
-        # Initialize client
-        self._client = AsyncAnthropic()
+        # Initialize client with lifecycle management
+        self._client: Optional[AsyncAnthropic] = None
+        self._client_closed = False
         
         # Configure logging
         self._setup_logging(log_file)
+        
+    async def _get_client(self) -> AsyncAnthropic:
+        """Get or create async client with proper lifecycle management."""
+        if self._client is None or self._client_closed:
+            self._client = AsyncAnthropic(
+                timeout=30.0,  # Add reasonable timeout for tests
+                max_retries=2 if os.getenv('ENVIRONMENT') == 'testing' else 3  # Fewer retries in tests
+            )
+            self._client_closed = False
+        return self._client
+    
+    async def close(self):
+        """Close the async client and cleanup resources."""
+        if self._client and not self._client_closed:
+            try:
+                await self._client.close()
+                self._logger.info("Anthropic client closed successfully")
+            except Exception as e:
+                self._logger.warning(f"Error closing Anthropic client: {e}")
+            finally:
+                self._client_closed = True
+                self._client = None
+                
+    def __del__(self):
+        """Cleanup when handler is garbage collected."""
+        if hasattr(self, '_client') and self._client and not self._client_closed:
+            # If we still have an open client, log a warning
+            import warnings
+            warnings.warn("AnthropicAsyncHandler was garbage collected with open client. Call close() explicitly.")
         
     def _setup_logging(self, log_file: Optional[str]) -> None:
         """
@@ -295,12 +325,20 @@ class AnthropicAsyncHandler:
         # Validate message structure
         self._validate_messages(messages)
         
-        async with self._client.messages.stream(messages=messages, **self._config) as stream:
-            if self._print_response:
-                await self._print_stream(stream)
-            response = await stream.get_final_message()
-            self._log_call_records(response)
-            return response
+        # Get client with lifecycle management
+        client = await self._get_client()
+        
+        try:
+            async with client.messages.stream(messages=messages, **self._config) as stream:
+                if self._print_response:
+                    await self._print_stream(stream)
+                response = await stream.get_final_message()
+                self._log_call_records(response)
+                return response
+        except Exception as e:
+            # Log the error but don't close client immediately - let cleanup handle it
+            self._logger.error(f"API call failed: {str(e)}")
+            raise
 
     def _validate_messages(self, messages: List[Dict[str, Any]]) -> None:
         """

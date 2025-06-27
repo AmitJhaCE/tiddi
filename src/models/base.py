@@ -15,7 +15,7 @@ class HealthResponse(BaseResponse):
 
 # Keep existing request models - they're fine
 class StoreNoteRequest(BaseModel):
-    text: str = Field(..., min_length=1, max_length=10000, description="Work note content")
+    text: str = Field(..., min_length=1, description="Work note content")
     tags: Optional[List[str]] = Field(default=[], description="Optional tags")
     session_id: Optional[str] = Field(None, description="Chat session identifier")
 

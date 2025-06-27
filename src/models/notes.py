@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from uuid import UUID
+from .base import StoreNoteRequest, BaseResponse
 
 class EntityMention(BaseModel):
     """Entity extracted from or linked to a note"""
@@ -35,3 +35,26 @@ class NoteSearchResult(NoteBase):
     relevance_score: float = Field(ge=0.0, le=1.0, description="Combined relevance score")
     similarity_score: Optional[float] = Field(None, description="Semantic similarity score")
     text_rank: Optional[float] = Field(None, description="Full-text search rank")
+
+# Models for Bulk Store 
+class BulkStoreNotesRequest(BaseModel):
+    """Request for bulk note storage"""
+    notes: List[StoreNoteRequest] = Field(..., min_items=1, max_items=50)
+    session_id: Optional[str] = Field(None, description="Bulk session identifier")
+
+class BulkNoteResult(BaseModel):
+    """Individual note result in bulk operation"""
+    note_id: Optional[str] = None
+    entities: List[EntityMention] = Field(default_factory=list)
+    processing_time_ms: int = 0
+    error: Optional[str] = None
+    success: bool = True
+
+class BulkStoreNotesResponse(BaseResponse):
+    """Response for bulk note storage"""
+    stored_notes: List[BulkNoteResult] = Field(default_factory=list)
+    total_processed: int = 0
+    total_processing_time_ms: int = 0
+    failed_notes: List[BulkNoteResult] = Field(default_factory=list)
+    success_count: int = 0
+    failure_count: int = 0
